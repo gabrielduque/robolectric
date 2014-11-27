@@ -1,0 +1,20 @@
+# This file defines the continuous integration build process to be run at circleci.com.
+
+
+# Define the Android SDK location (specific to CircleCI).
+machine:
+  environment:
+    ANDROID_HOME: /usr/local/android-sdk-linux
+
+# Before running tests, install the following dependencies.
+dependencies:
+  override:
+    - echo "y" | android update sdk --no-ui --filter platform-tools,tools
+    - echo "y" | android update sdk --no-ui --filter build-tools-20.0.0
+    - echo "y" | android update sdk --no-ui --filter android-18
+    - echo "y" | android update sdk --no-ui --filter addon-google_apis-google-18,extra-android-support
+    - ./scripts/install-maps-jar.sh
+    - ./scripts/install-support-jar.sh
+
+  cache_directories:
+    - /usr/local/android-sdk-linux
