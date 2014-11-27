@@ -1,6 +1,6 @@
 # Robolectric
 
-[![Build Status](https://secure.travis-ci.org/robolectric/robolectric.png?branch=master)](http://travis-ci.org/robolectric/robolectric)
+[![Circle CI](https://circleci.com/gh/Snapchat/robolectric.svg?style=svg)](https://circleci.com/gh/Snapchat/robolectric)
 
 Robolectric is a testing framework that de-fangs the Android SDK so you can test-drive the development of your Android app.
 
