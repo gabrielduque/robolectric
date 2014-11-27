@@ -1,6 +1,5 @@
 # This file defines the continuous integration build process to be run at circleci.com.
 
-
 # Define the Android SDK location (specific to CircleCI).
 machine:
   environment:
@@ -18,3 +17,7 @@ dependencies:
 
   cache_directories:
     - /usr/local/android-sdk-linux
+
+test:
+  post:
+    - cp /home/ubuntu/robolectric/robolectric/target/robolectric-2.4.jar $CIRCLE_ARTIFACTS
