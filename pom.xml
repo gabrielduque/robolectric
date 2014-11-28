@@ -10,7 +10,7 @@
 
   <groupId>org.robolectric</groupId>
   <artifactId>robolectric-parent</artifactId>
-  <version>2.4</version>
+  <version>2.4-DEADLOCK-PATCH</version>
   <packaging>pom</packaging>
   <name>Robolectric All</name>
   <description>An alternative Android testing framework.</description>
