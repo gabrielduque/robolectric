@@ -9,9 +9,9 @@ machine:
 dependencies:
   override:
     - echo "y" | android update sdk --no-ui --filter platform-tools,tools
-    - echo "y" | android update sdk --no-ui --filter build-tools-20.0.0
-    - echo "y" | android update sdk --no-ui --filter android-18
-    - echo "y" | android update sdk --no-ui --filter addon-google_apis-google-18,extra-android-support
+    - echo "y" | android update sdk --no-ui --filter build-tools-21.0.0
+    - echo "y" | android update sdk --no-ui --filter android-21
+    - echo "y" | android update sdk --no-ui --filter addon-google_apis-google-21,extra-android-support
     - ./scripts/install-maps-jar.sh
     - ./scripts/install-support-jar.sh
 
@@ -20,4 +20,4 @@ dependencies:
 
 test:
   post:
-    - cp /home/ubuntu/robolectric/robolectric/target/robolectric-2.4-jar-with-dependencies.jar $CIRCLE_ARTIFACTS
+    - cp /home/ubuntu/robolectric/robolectric/target/robolectric-2.5-jar-with-dependencies.jar $CIRCLE_ARTIFACTS
