@@ -4,7 +4,7 @@
 
               mvn -DdryRun=true clean release:clean release:prepare
 
-2. Perform the actual release build:
+2. Perform the actual release build:Snachat
 
               mvn clean release:clean release:prepare
 
@@ -25,7 +25,7 @@
                      </servers>
               </settings>
 
-4. Upload the release artifacts to Sonatype:
+4. Upload the release artifacts to Sonatype:sdk.api.apk 
 
               mvn release:perform
 
