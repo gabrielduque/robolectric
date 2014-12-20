@@ -1,19 +1,26 @@
 package org.robolectric.util;
 
 import android.app.Activity;
+import android.app.Application;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Looper;
+import android.view.Window;
+import android.widget.LinearLayout;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.TestRunners;
+import org.robolectric.annotation.Config;
+import org.robolectric.shadows.CoreShadowsAdapter;
+import org.robolectric.shadows.ShadowLooper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
-import static org.robolectric.Robolectric.shadowOf;
+import static org.robolectric.Shadows.shadowOf;
 
 @RunWith(TestRunners.WithDefaults.class)
 public class ActivityControllerTest {
@@ -42,13 +49,13 @@ public class ActivityControllerTest {
 
   @Test
   public void shouldSetIntentForGivenActivityInstance() throws Exception {
-    ActivityController<MyActivity> activityController = ActivityController.of(new MyActivity()).create();
+    ActivityController<MyActivity> activityController = ActivityController.of(new CoreShadowsAdapter(), new MyActivity()).create();
     assertThat(activityController.get().getIntent()).isNotNull();
   }
 
   @Test
   public void whenLooperIsNotPaused_shouldCreateWithMainLooperPaused() throws Exception {
-    Robolectric.unPauseMainLooper();
+    ShadowLooper.unPauseMainLooper();
     controller.create();
     assertThat(shadowOf(Looper.getMainLooper()).isPaused()).isFalse();
     transcript.assertEventsInclude("finishedOnCreate", "onCreate");
@@ -56,13 +63,35 @@ public class ActivityControllerTest {
 
   @Test
   public void whenLooperIsAlreadyPaused_shouldCreateWithMainLooperPaused() throws Exception {
-    Robolectric.pauseMainLooper();
+    ShadowLooper.pauseMainLooper();
     controller.create();
     assertThat(shadowOf(Looper.getMainLooper()).isPaused()).isTrue();
     transcript.assertEventsInclude("finishedOnCreate");
 
-    Robolectric.unPauseMainLooper();
+    ShadowLooper.unPauseMainLooper();
     transcript.assertEventsInclude("onCreate");
+  }
+
+  @Test
+  public void withApplication_attachesTestApplicationToActivity() {
+    Application application = new Application();
+    MyActivity activity = controller.withApplication(application).create().get();
+    assertThat(activity.getApplication()).isEqualTo(application);
+  }
+
+  @Test
+  public void withApplication_setsBaseContext() {
+    Application application = new Application();
+    controller.withApplication(application).create().get();
+    assertThat(application.getBaseContext()).isNotNull();
+  }
+
+  @Test
+  public void withApplication_bindsResourcesAndAssets() {
+    Application application = new Application();
+    controller.withApplication(application).create().get();
+    assertThat(application.getBaseContext().getAssets()).isNotNull();
+    assertThat(application.getBaseContext().getResources()).isNotNull();
   }
 
   @Test
@@ -151,6 +180,12 @@ public class ActivityControllerTest {
     assertEquals(controller.get().getWindow().getDecorView().getParent().getClass().getName(), "android.view.ViewRootImpl");
   }
 
+  @Test @Config(emulateSdk = 19)
+  public void attach_shouldWorkWithAPI19() {
+    MyActivity activity = Robolectric.buildActivity(MyActivity.class).create().get();
+    assertThat(activity).isNotNull();
+  }
+
   public static class MyActivity extends Activity {
     @Override
     protected void onRestoreInstanceState(Bundle savedInstanceState) {
@@ -162,6 +197,8 @@ public class ActivityControllerTest {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
       super.onCreate(savedInstanceState);
+      getWindow().requestFeature(Window.FEATURE_ACTION_BAR);
+      setContentView(new LinearLayout(RuntimeEnvironment.application));
       transcribeWhilePaused("onCreate");
       transcript.add("finishedOnCreate");
     }

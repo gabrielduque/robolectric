@@ -10,9 +10,8 @@
 
   <groupId>org.robolectric</groupId>
   <artifactId>robolectric-parent</artifactId>
-  <version>2.4</version>
+  <version>3.0-SNAPSHOT</version>
   <packaging>pom</packaging>
-  <name>Robolectric All</name>
   <description>An alternative Android testing framework.</description>
   <url>http://robolectric.org/</url>
 
@@ -20,16 +19,28 @@
     <module>robolectric</module>
     <module>robolectric-annotations</module>
     <module>robolectric-processor</module>
+    <module>robolectric-resources</module>
+    <module>robolectric-shadows</module>
+    <module>robolectric-utils</module>
   </modules>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.source>1.6</maven.compiler.source>
-    <maven.compiler.target>1.6</maven.compiler.target>
+    <maven.compiler.source>1.7</maven.compiler.source>
+    <maven.compiler.target>1.7</maven.compiler.target>
+    <libsqlite.version>0.282-3</libsqlite.version>
+    <robolectric.api.level>21</robolectric.api.level>
   </properties>
 
   <dependencyManagement>
     <dependencies>
+      <!-- Robolectric Dependencies -->
+      <dependency>
+        <groupId>org.robolectric</groupId>
+        <artifactId>robolectric</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
       <dependency>
         <groupId>org.robolectric</groupId>
         <artifactId>robolectric-annotations</artifactId>
@@ -37,23 +48,36 @@
       </dependency>
 
       <dependency>
-        <groupId>junit</groupId>
-        <artifactId>junit-dep</artifactId>
-        <version>4.8.2</version>
-        <scope>provided</scope>
+        <groupId>org.robolectric</groupId>
+        <artifactId>robolectric-fakehttp</artifactId>
+        <version>${project.version}</version>
       </dependency>
 
       <dependency>
         <groupId>org.robolectric</groupId>
-        <artifactId>android-all</artifactId>
-        <version>4.3_r2-robolectric-0</version>
-        <scope>provided</scope>
+        <artifactId>robolectric-utils</artifactId>
+        <version>${project.version}</version>
       </dependency>
 
       <dependency>
-        <groupId>com.google.guava</groupId>
-        <artifactId>guava</artifactId>
-        <version>16.0.1</version>
+        <groupId>org.robolectric</groupId>
+        <artifactId>robolectric-resources</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.robolectric</groupId>
+        <artifactId>shadows-core</artifactId>
+        <version>${project.version}</version>
+        <classifier>${robolectric.api.level}</classifier>
+      </dependency>
+
+      <!-- Test Dependencies -->
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>1.7.0</version>
+        <scope>test</scope>
       </dependency>
 
       <dependency>
@@ -64,9 +88,23 @@
       </dependency>
 
       <dependency>
-        <groupId>org.easytesting</groupId>
-        <artifactId>fest-util</artifactId>
-        <version>1.2.5</version>
+        <groupId>org.robolectric</groupId>
+        <artifactId>android-all</artifactId>
+        <version>5.0.0_r2-robolectric-0</version>
+        <scope>provided</scope>
+      </dependency>
+
+      <!-- Project Dependencies -->
+      <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit-dep</artifactId>
+        <version>4.8.2</version>
+      </dependency>
+
+      <dependency>
+        <groupId>com.google.guava</groupId>
+        <artifactId>guava</artifactId>
+        <version>16.0.1</version>
       </dependency>
 
       <dependency>
@@ -75,6 +113,12 @@
         <version>12.0</version>
         <scope>provided</scope>
       </dependency>
+
+      <dependency>
+        <groupId>org.apache.httpcomponents</groupId>
+        <artifactId>httpclient</artifactId>
+        <version>4.0.3</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -82,6 +126,13 @@
     <pluginManagement>
       <plugins>
         <plugin>
+          <groupId>org.bsc.maven</groupId>
+          <artifactId>maven-processor-plugin</artifactId>
+          <version>2.2.4</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-compiler-plugin</artifactId>
           <version>2.3.2</version>
           <configuration>
@@ -89,31 +140,6 @@
             <target>${maven.compiler.target}</target>
             <compilerArgument>-proc:none</compilerArgument>
           </configuration>
-        </plugin>
-
-        <plugin>
-          <groupId>org.bsc.maven</groupId>
-          <artifactId>maven-processor-plugin</artifactId>
-          <version>2.2.1</version>
-          <configuration>
-            <compilerArguments>-source ${maven.compiler.source} -target ${maven.compiler.target}</compilerArguments>
-          </configuration>
-          <executions>
-            <execution>
-              <id>process</id>
-              <goals>
-                <goal>process</goal>
-              </goals>
-              <phase>generate-sources</phase>
-            </execution>
-          </executions>
-          <dependencies>
-            <dependency>
-              <groupId>org.robolectric</groupId>
-              <artifactId>robolectric-processor</artifactId>
-              <version>${project.version}</version>
-            </dependency>
-          </dependencies>
         </plugin>
 
         <plugin>
@@ -125,10 +151,12 @@
               <include>**/*Test.java</include>
             </includes>
             <argLine>-Xms512m -Xmx1024m -XX:MaxPermSize=256m</argLine>
+            <runOrder>random</runOrder>
           </configuration>
         </plugin>
 
         <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-assembly-plugin</artifactId>
           <version>2.2</version>
           <configuration>
@@ -147,7 +175,6 @@
           </executions>
         </plugin>
 
-        <!-- required for testing robolectric-sqlite -->
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-jar-plugin</artifactId>
@@ -162,24 +189,7 @@
         </plugin>
 
         <plugin>
-          <groupId>com.googlecode.mavennatives</groupId>
-          <artifactId>maven-nativedependencies-plugin</artifactId>
-          <version>0.0.7</version>
-          <executions>
-            <execution>
-              <id>unpacknatives</id>
-              <phase>generate-resources</phase>
-              <goals>
-                <goal>copy</goal>
-              </goals>
-            </execution>
-          </executions>
-          <configuration>
-            <separateDirs>true</separateDirs>
-          </configuration>
-        </plugin>
-
-        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-clean-plugin</artifactId>
           <version>2.4.1</version>
           <configuration>
@@ -191,6 +201,37 @@
                 </includes>
               </fileset>
             </filesets>
+          </configuration>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>2.4</version>
+          <executions>
+            <execution>
+              <id>attach-sources</id>
+              <goals>
+                <goal>jar</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>2.10.1</version>
+          <executions>
+            <execution>
+              <id>attach-sources</id>
+              <goals>
+                <goal>jar</goal>
+              </goals>
+            </execution>
+          </executions>
+          <configuration>
+            <quiet>true</quiet>
           </configuration>
         </plugin>
       </plugins>
@@ -220,6 +261,7 @@
       </roles>
       <timezone>PST/PDT</timezone>
     </developer>
+
     <developer>
       <id>tyler</id>
       <name>Tyler Schultz</name>
@@ -231,6 +273,7 @@
       </roles>
       <timezone>PST/PDT</timezone>
     </developer>
+
     <developer>
       <id>phil</id>
       <name>Phil Goodwin</name>

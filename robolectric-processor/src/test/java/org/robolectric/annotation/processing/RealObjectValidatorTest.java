@@ -3,8 +3,7 @@ package org.robolectric.annotation.processing;
 import static com.google.testing.compile.JavaFileObjects.forResource;
 import static com.google.testing.compile.JavaSourcesSubjectFactory.javaSources;
 import static org.truth0.Truth.ASSERT;
-import static org.robolectric.annotation.processing.Utils.ROBO_INTERNALS_SOURCE;
-import static org.robolectric.annotation.processing.Utils.SHADOW_WRANGLER_SOURCE;
+import static org.robolectric.annotation.processing.Utils.SHADOW_EXTRACTOR_SOURCE;
 import static org.robolectric.annotation.processing.SingleClassSubject.singleClass;
 
 import org.junit.Test;
@@ -20,6 +19,26 @@ public class RealObjectValidatorTest {
       .failsToCompile()
       .withErrorContaining("@RealObject without @Implements")
       .onLine(7);
+  }
+
+  @Test
+  public void realObjectParameterizedMissingParameters_shouldNotCompile() {
+    final String testClass = "org.robolectric.annotation.processing.shadows.ShadowRealObjectParameterizedMissingParameters";
+    ASSERT.about(singleClass())
+      .that(testClass)
+      .failsToCompile()
+      .withErrorContaining("@RealObject is missing type parameters")
+      .onLine(11);
+  }
+
+  @Test
+  public void realObjectParameterizedMismatch_shouldNotCompile() {
+    final String testClass = "org.robolectric.annotation.processing.shadows.ShadowRealObjectParameterizedMismatch";
+    ASSERT.about(singleClass())
+      .that(testClass)
+      .failsToCompile()
+      .withErrorContaining("Parameter type mismatch: expecting <T,S>, was <S,T>")
+      .onLine(11);
   }
 
   @Test
@@ -81,8 +100,7 @@ public class RealObjectValidatorTest {
   public void realObjectWithCorrectType_withoutAnything_shouldCompile() {
     ASSERT.about(javaSources())
     .that(ImmutableList.of(
-        ROBO_INTERNALS_SOURCE,
-        SHADOW_WRANGLER_SOURCE,
+        SHADOW_EXTRACTOR_SOURCE,
         forResource("org/robolectric/annotation/processing/shadows/ShadowRealObjectWithCorrectType.java")))
     .processedWith(new RoboProcessor())
       .compilesWithoutError();
@@ -97,15 +115,10 @@ public class RealObjectValidatorTest {
   }
 
   @Test
-  public void shouldGracefullyHandleNoAnythingClass_withFoundOnImplementsAnnotation() {
-  }
-
-  @Test
   public void realObjectWithCorrectClassName_shouldCompile() {
     ASSERT.about(javaSources())
       .that(ImmutableList.of(
-          ROBO_INTERNALS_SOURCE,
-          SHADOW_WRANGLER_SOURCE,
+          SHADOW_EXTRACTOR_SOURCE,
           forResource("org/robolectric/annotation/processing/shadows/ShadowRealObjectWithCorrectClassName.java")))
       .processedWith(new RoboProcessor())
       .compilesWithoutError();

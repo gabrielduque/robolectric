@@ -1,7 +1,7 @@
 package org.robolectric.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.robolectric.Robolectric.shadowOf;
+import static org.robolectric.Shadows.shadowOf;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -15,6 +15,8 @@ import android.content.Intent;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import org.robolectric.shadows.CoreShadowsAdapter;
+import org.robolectric.shadows.ShadowLooper;
 
 @RunWith(TestRunners.WithDefaults.class)
 public class ServiceControllerTest {
@@ -52,13 +54,13 @@ public class ServiceControllerTest {
 
   @Test
   public void shouldSetIntentForGivenServiceInstance() throws Exception {
-    ServiceController<MyService> serviceController = ServiceController.of(new MyService()).bind();
+    ServiceController<MyService> serviceController = ServiceController.of(new CoreShadowsAdapter(), new MyService()).bind();
     assertThat(serviceController.get().boundIntent).isNotNull();
   }
 
   @Test
   public void whenLooperIsNotPaused_shouldCreateWithMainLooperPaused() throws Exception {
-    Robolectric.unPauseMainLooper();
+    ShadowLooper.unPauseMainLooper();
     controller.create();
     assertThat(shadowOf(Looper.getMainLooper()).isPaused()).isFalse();
     transcript.assertEventsInclude("finishedOnCreate", "onCreate");
@@ -66,12 +68,12 @@ public class ServiceControllerTest {
 
   @Test
   public void whenLooperIsAlreadyPaused_shouldCreateWithMainLooperPaused() throws Exception {
-    Robolectric.pauseMainLooper();
+    ShadowLooper.pauseMainLooper();
     controller.create();
     assertThat(shadowOf(Looper.getMainLooper()).isPaused()).isTrue();
     transcript.assertEventsInclude("finishedOnCreate");
 
-    Robolectric.unPauseMainLooper();
+    ShadowLooper.unPauseMainLooper();
     transcript.assertEventsInclude("onCreate");
   }
 

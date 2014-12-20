@@ -1,14 +1,13 @@
 package org.robolectric;
 
-import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.model.InitializationError;
-import org.junit.runners.model.Statement;
 import org.robolectric.annotation.Config;
 import org.robolectric.bytecode.AndroidTranslatorClassInstrumentedTest;
 import org.robolectric.bytecode.ClassInfo;
 import org.robolectric.bytecode.Setup;
 import org.robolectric.bytecode.ShadowMap;
 import org.robolectric.internal.ParallelUniverseInterface;
+import org.robolectric.manifest.AndroidManifest;
 import org.robolectric.res.FsFile;
 import org.robolectric.res.ResourceLoader;
 import org.robolectric.shadows.ShadowSystemProperties;
@@ -25,7 +24,7 @@ public class TestRunners {
     }
 
     @Override
-    protected AndroidManifest createAppManifest(FsFile manifestFile, FsFile resDir, FsFile assetsDir) {
+    protected AndroidManifest createAppManifest(FsFile manifestFile, FsFile resDir, FsFile assetDir) {
       return new AndroidManifest(resourceFile("TestAndroidManifest.xml"), resourceFile("res"), resourceFile("assets"));
     }
 
@@ -57,18 +56,18 @@ public class TestRunners {
           .build();
     }
 
-    @Override protected AndroidManifest createAppManifest(FsFile manifestFile, FsFile resDir, FsFile assetsDir) {
+    @Override protected AndroidManifest createAppManifest(FsFile manifestFile, FsFile resDir, FsFile assetDir) {
       return null;
     }
 
     @Override
-    protected void setUpApplicationState(Method method, ParallelUniverseInterface parallelUniverseInterface, boolean strictI18n, ResourceLoader systemResourceLoader, AndroidManifest appManifest, Config config) {
+    protected void setUpApplicationState(Method method, ParallelUniverseInterface parallelUniverseInterface, ResourceLoader systemResourceLoader, AndroidManifest appManifest, Config config) {
       // Don't do any resource loading or app init, because that's what we're trying to test here.
     }
   }
 
   public static class WithDefaults extends RobolectricTestRunner {
-    public static final String SDK_TARGETED_BY_MANIFEST = "-v18";
+    public static final String SDK_TARGETED_BY_MANIFEST = "-v21";
     
     public WithDefaults(Class<?> testClass) throws InitializationError {
       super(testClass);
@@ -86,7 +85,7 @@ public class TestRunners {
     }
 
     @Override
-    protected AndroidManifest createAppManifest(FsFile manifestFile, FsFile resDir, FsFile assetsDir) {
+    protected AndroidManifest createAppManifest(FsFile manifestFile, FsFile resDir, FsFile assetDir) {
       return new AndroidManifest(resourceFile("TestAndroidManifest.xml"), resourceFile("res"), resourceFile("assets"));
     }
   }
@@ -108,8 +107,8 @@ public class TestRunners {
 
     @Override
     protected void setUpApplicationState(Method method,
-        ParallelUniverseInterface parallelUniverseInterface, boolean strictI18n,
-        ResourceLoader systemResourceLoader, AndroidManifest appManifest, Config config) {
+                                         ParallelUniverseInterface parallelUniverseInterface,
+                                         ResourceLoader systemResourceLoader, AndroidManifest appManifest, Config config) {
       // Don't do any resource loading or app init, because that's what we're trying to test here.
     }
   }

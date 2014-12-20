@@ -8,6 +8,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.GeneratorAdapter;
+import org.objectweb.asm.commons.JSRInlinerAdapter;
 import org.objectweb.asm.commons.Method;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
@@ -20,14 +21,11 @@ import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
-import org.objectweb.asm.util.CheckClassAdapter;
-import org.objectweb.asm.util.TraceClassVisitor;
+import org.robolectric.internal.Shadow;
+import org.robolectric.internal.ShadowConstants;
 
-import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintWriter;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Modifier;
 import java.net.URL;
@@ -46,31 +44,26 @@ import static org.objectweb.asm.Type.VOID;
 import static org.objectweb.asm.Type.getType;
 import static org.robolectric.util.Util.readBytes;
 
-public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes, InstrumentingClassLoader {
-  private static final String OBJECT_DESC = Type.getDescriptor(Object.class);
-  private static final Type OBJECT_TYPE = getType(Object.class);
-  private static final Type STRING_TYPE = getType(String.class);
+public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes {
+  private static final Type OBJECT_TYPE = Type.getType(Object.class);
   private static final Type ROBOLECTRIC_INTERNALS_TYPE = Type.getType(RobolectricInternals.class);
   private static final Type PLAN_TYPE = Type.getType(ClassHandler.Plan.class);
   private static final Type THROWABLE_TYPE = Type.getType(Throwable.class);
+  private static final String OBJECT_DESC = Type.getDescriptor(Object.class);
+
   private static final Method INITIALIZING_METHOD = new Method("initializing", "(Ljava/lang/Object;)Ljava/lang/Object;");
   private static final Method METHOD_INVOKED_METHOD = new Method("methodInvoked", "(Ljava/lang/String;ZLjava/lang/Class;)L" + PLAN_TYPE.getInternalName() + ";");
   private static final Method PLAN_RUN_METHOD = new Method("run", OBJECT_TYPE, new Type[]{OBJECT_TYPE, OBJECT_TYPE, Type.getType(Object[].class)});
   private static final Method HANDLE_EXCEPTION_METHOD = new Method("cleanStackTrace", THROWABLE_TYPE, new Type[]{THROWABLE_TYPE});
   private static final String DIRECT_OBJECT_MARKER_TYPE_DESC = Type.getObjectType(DirectObjectMarker.class.getName().replace('.', '/')).getDescriptor();
   private static final String ROBO_INIT_METHOD_NAME = "$$robo$init";
-  static final String GET_ROBO_DATA_METHOD_NAME = "$$robo$getData";
   private static final String GET_ROBO_DATA_SIGNATURE = "()Ljava/lang/Object;";
-
-  private static boolean debug = false;
 
   private final Setup setup;
   private final URLClassLoader urls;
-  private final Map<String, Class> classes = new HashMap<String, Class>();
+  private final Map<String, Class> classes = new HashMap<>();
   private final Set<Setup.MethodRef> methodsToIntercept;
   private final Map<String, String> classesToRemap;
-  private int number = 0;
-
 
   public AsmInstrumentingClassLoader(Setup setup, URL... urls) {
     super(AsmInstrumentingClassLoader.class.getClassLoader());
@@ -78,6 +71,9 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
     this.urls = new URLClassLoader(urls, null);
     classesToRemap = convertToSlashes(setup.classNameTranslations());
     methodsToIntercept = convertToSlashes(setup.methodsToIntercept());
+    for (URL url : urls) {
+      System.out.println("Loading classes from: " + url.toString());
+    }
   }
 
   @Override
@@ -91,10 +87,8 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
       }
     }
 
-    boolean shouldComeFromThisClassLoader = setup.shouldAcquire(name);
-
     try {
-      if (shouldComeFromThisClassLoader) {
+      if (setup.shouldAcquire(name)) {
         theClass = findClass(name);
       } else {
         theClass = getParent().loadClass(name);
@@ -123,9 +117,8 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
   @Override
   protected Class<?> findClass(final String className) throws ClassNotFoundException {
     if (setup.shouldAcquire(className)) {
-      byte[] origClassBytes = getByteCode(className);
+      final byte[] origClassBytes = getByteCode(className);
 
-      final ClassReader classReader = new ClassReader(origClassBytes);
       ClassNode classNode = new ClassNode(Opcodes.ASM4) {
         @Override
         public FieldVisitor visitField(int access, String name, String desc, String signature, Object value) {
@@ -135,20 +128,22 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
-          return super.visitMethod(access, name, remapParams(desc), signature, exceptions);
+          MethodVisitor methodVisitor = super.visitMethod(access, name, remapParams(desc), signature, exceptions);
+          return new JSRInlinerAdapter(methodVisitor, access, name, desc, signature, exceptions);
         }
       };
+
+      final ClassReader classReader = new ClassReader(origClassBytes);
       classReader.accept(classNode, 0);
 
       try {
         byte[] bytes;
         AsmClassInfo classInfo = new AsmClassInfo(className, classNode);
         if (setup.shouldInstrument(classInfo)) {
-          bytes = getInstrumentedBytes(className, classNode, setup.containsStubs(classInfo));
+          bytes = getInstrumentedBytes(classNode, setup.containsStubs(classInfo));
         } else {
           bytes = origClassBytes;
         }
-//                System.out.println("[DEBUG] Defining " + classFilename + " (" + bytes.length + ") in " + this + ": class" + number++);
         ensurePackage(className);
         return defineClass(className, bytes, 0, bytes.length);
       } catch (Exception e) {
@@ -159,16 +154,12 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
       }
     } else {
       throw new IllegalStateException("how did we get here? " + className);
-//            return super.findClass(className);
     }
   }
 
   protected byte[] getByteCode(String className) throws ClassNotFoundException {
     String classFilename = className.replace('.', '/') + ".class";
-    InputStream classBytesStream = urls.getResourceAsStream(classFilename);
-    if (classBytesStream == null) {
-      classBytesStream = getResourceAsStream(classFilename);
-    }
+    InputStream classBytesStream = getResourceAsStream(classFilename);
     if (classBytesStream == null) throw new ClassNotFoundException(className);
 
     byte[] origClassBytes;
@@ -246,49 +237,11 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
     return value;
   }
 
-  private byte[] getInstrumentedBytes(String className, ClassNode classNode, boolean containsStubs) throws ClassNotFoundException {
+  private byte[] getInstrumentedBytes(ClassNode classNode, boolean containsStubs) throws ClassNotFoundException {
     new ClassInstrumentor(classNode, containsStubs).instrument();
-
-    /**
-     * Preserve stack map frames for V51 and newer bytecode. This fixes class verification errors
-     * for JDK7 and JDK8. The option to disable bytecode verification was removed in JDK8.
-     *
-     * Don't bother for V50 and earlier bytecode, because it doesn't contain stack map frames, and
-     * also because ASM's stack map frame handling doesn't support the JSR and RET instructions
-     * present in legacy bytecode.
-     */
-    int classWriterFlags = classNode.version >= 51
-        ? ClassWriter.COMPUTE_FRAMES
-        : ClassWriter.COMPUTE_MAXS;
-    ClassWriter classWriter = new ClassWriter(classWriterFlags) {
-      @Override
-      public int newNameType(String name, String desc) {
-        return super.newNameType(name, desc.charAt(0) == ')' ? remapParams(desc) : remapParamType(desc));
-      }
-
-      @Override
-      public int newClass(String value) {
-        value = remapType(value);
-        return super.newClass(value);
-      }
-    };
-    classNode.accept(classWriter);
-
-    byte[] classBytes = classWriter.toByteArray();
-
-    if (debug) {
-      try {
-        FileOutputStream fileOutputStream = new FileOutputStream("tmp/" + className + ".class");
-        fileOutputStream.write(classBytes);
-        fileOutputStream.close();
-        CheckClassAdapter.verify(new ClassReader(classBytes), true, new PrintWriter(new FileWriter("tmp/" + className + ".analysis", false)));
-        new ClassReader(classBytes).accept(new TraceClassVisitor(new PrintWriter(new FileWriter("tmp/" + className + ".dis", false))), 0);
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    }
-
-    return classBytes;
+    ClassWriter writer = new InstrumentingClassWriter(classNode);
+    classNode.accept(writer);
+    return writer.toByteArray();
   }
 
   private static class MyGenerator extends GeneratorAdapter {
@@ -381,7 +334,7 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
   }
 
   private Map<String, String> convertToSlashes(Map<String, String> map) {
-    HashMap<String, String> newMap = new HashMap<String, String>();
+    HashMap<String, String> newMap = new HashMap<>();
     for (Map.Entry<String, String> entry : map.entrySet()) {
       String key = internalize(entry.getKey());
       String value = internalize(entry.getValue());
@@ -392,7 +345,7 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
   }
 
   private Set<Setup.MethodRef> convertToSlashes(Set<Setup.MethodRef> methodRefs) {
-    HashSet<Setup.MethodRef> transformed = new HashSet<Setup.MethodRef>();
+    HashSet<Setup.MethodRef> transformed = new HashSet<>();
     for (Setup.MethodRef methodRef : methodRefs) {
       transformed.add(new Setup.MethodRef(internalize(methodRef.className), methodRef.methodName));
     }
@@ -405,7 +358,7 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
 
   private class ClassInstrumentor {
     private final ClassNode classNode;
-    private boolean containsStubs;
+    private final boolean containsStubs;
     private final String internalClassName;
     private final String className;
     private final Type classType;
@@ -423,16 +376,15 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
       makePublic(classNode);
       classNode.access = classNode.access & ~ACC_FINAL;
 
-      Set<String> foundMethods = new HashSet<String>();
-
-      List<MethodNode> methods = new ArrayList<MethodNode>(classNode.methods);
+      Set<String> foundMethods = new HashSet<>();
+      List<MethodNode> methods = new ArrayList<>(classNode.methods);
       for (MethodNode method : methods) {
         foundMethods.add(method.name + method.desc);
 
         filterNasties(method);
 
         if (method.name.equals("<clinit>")) {
-          method.name = STATIC_INITIALIZER_METHOD_NAME;
+          method.name = ShadowConstants.STATIC_INITIALIZER_METHOD_NAME;
           classNode.methods.add(generateStaticInitializerNotifierMethod());
         } else if (method.name.equals("<init>")) {
           instrumentConstructor(method);
@@ -441,7 +393,7 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
         }
       }
 
-      classNode.fields.add(0, new FieldNode(ACC_PUBLIC, CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_DESC, OBJECT_DESC, null));
+      classNode.fields.add(0, new FieldNode(ACC_PUBLIC, ShadowConstants.CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_DESC, OBJECT_DESC, null));
 
       if (!foundMethods.contains("<init>()V")) {
         MethodNode defaultConstructor = new MethodNode(ACC_PUBLIC, "<init>", "()V", "()V", null);
@@ -468,7 +420,7 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
         }
         m.loadThis();
         m.loadArg(1);
-        m.putField(classType, InstrumentingClassLoader.CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);
+        m.putField(classType, ShadowConstants.CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);
         m.returnValue();
         classNode.methods.add(directCallConstructor);
       }
@@ -484,22 +436,22 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
         MyGenerator m = new MyGenerator(initMethodNode);
         Label alreadyInitialized = new Label();
         m.loadThis();                                         // this
-        m.getField(classType, CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);  // contents of __robo_data__
+        m.getField(classType, ShadowConstants.CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);  // contents of __robo_data__
         m.ifNonNull(alreadyInitialized);
         m.loadThis();                                         // this
         m.loadThis();                                         // this, this
         m.invokeStatic(ROBOLECTRIC_INTERNALS_TYPE, INITIALIZING_METHOD); // this, __robo_data__
-        m.putField(classType, CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);
+        m.putField(classType, ShadowConstants.CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);
         m.mark(alreadyInitialized);
         m.returnValue();
         classNode.methods.add(initMethodNode);
       }
 
       {
-        MethodNode initMethodNode = new MethodNode(ACC_PROTECTED, GET_ROBO_DATA_METHOD_NAME, GET_ROBO_DATA_SIGNATURE, null, null);
+        MethodNode initMethodNode = new MethodNode(ACC_PROTECTED, ShadowConstants.GET_ROBO_DATA_METHOD_NAME, GET_ROBO_DATA_SIGNATURE, null, null);
         MyGenerator m = new MyGenerator(initMethodNode);
         m.loadThis();                                         // this
-        m.getField(classType, CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);  // contents of __robo_data__
+        m.getField(classType, ShadowConstants.CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);  // contents of __robo_data__
         m.returnValue();
         m.endMethod();
         classNode.methods.add(initMethodNode);
@@ -543,8 +495,8 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
       }
 
       InsnList removedInstructions = extractCallToSuperConstructor(method);
-      method.name = RobolectricInternals.directMethodName(className, CONSTRUCTOR_METHOD_NAME);
-      classNode.methods.add(redirectorMethod(method, CONSTRUCTOR_METHOD_NAME));
+      method.name = Shadow.directMethodName(className, ShadowConstants.CONSTRUCTOR_METHOD_NAME);
+      classNode.methods.add(redirectorMethod(method, ShadowConstants.CONSTRUCTOR_METHOD_NAME));
 
       String[] exceptions = exceptionArray(method);
       MethodNode methodNode = new MethodNode(method.access, "<init>", method.desc, method.signature, exceptions);
@@ -555,7 +507,7 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
 
       m.loadThis();
       m.invokeVirtual(classType, new Method(ROBO_INIT_METHOD_NAME, "()V"));
-      generateCallToClassHandler(method, CONSTRUCTOR_METHOD_NAME, m);
+      generateCallToClassHandler(method, ShadowConstants.CONSTRUCTOR_METHOD_NAME, m);
 
       m.endMethod();
       classNode.methods.add(methodNode);
@@ -607,8 +559,8 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
       }
 
       String originalName = method.name;
-      method.name = RobolectricInternals.directMethodName(className, originalName);
-      classNode.methods.add(redirectorMethod(method, RobolectricInternals.directMethodName(originalName)));
+      method.name = Shadow.directMethodName(className, originalName);
+      classNode.methods.add(redirectorMethod(method, Shadow.directMethodName(originalName)));
 
       MethodNode delegatorMethodNode = new MethodNode(method.access, originalName, method.desc, method.signature, exceptionArray(method));
       delegatorMethodNode.access &= ~(ACC_NATIVE | ACC_ABSTRACT | ACC_FINAL);
@@ -663,8 +615,10 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
           case INVOKEVIRTUAL:
             MethodInsnNode targetMethod = (MethodInsnNode) node;
             targetMethod.desc = remapParams(targetMethod.desc);
-            if (shouldIntercept(targetMethod)) {
-              interceptNastyMethod(instructions, callingMethod, targetMethod);
+            if (isGregorianCalendar(targetMethod)) {
+              replaceNastyGregorianCalendarConstructor(instructions, targetMethod);
+            } else if (shouldIntercept(targetMethod)) {
+              interceptNastyMethod(instructions, targetMethod);
             }
             break;
 
@@ -674,7 +628,27 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
       }
     }
 
-    private void interceptNastyMethod(ListIterator<AbstractInsnNode> instructions, MethodNode callingMethod, MethodInsnNode targetMethod) {
+    private boolean isGregorianCalendar(MethodInsnNode targetMethod) {
+      return targetMethod.owner.equals("java/util/GregorianCalendar") && targetMethod.name.equals("<init>") && targetMethod.desc.equals("(Z)V");
+    }
+
+    private void replaceNastyGregorianCalendarConstructor(ListIterator<AbstractInsnNode> instructions, MethodInsnNode targetMethod) {
+      // Remove the call to GregorianCalendar(boolean)
+      instructions.remove();
+
+      // Discard the already-pushed parameter for GregorianCalendar(boolean)
+      instructions.add(new InsnNode(POP));
+
+      // Add parameters values for calling GregorianCalendar(int, int, int)
+      instructions.add(new InsnNode(ICONST_0));
+      instructions.add(new InsnNode(ICONST_0));
+      instructions.add(new InsnNode(ICONST_0));
+
+      // Call GregorianCalendar(int, int, int)
+      instructions.add(new MethodInsnNode(INVOKESPECIAL, targetMethod.owner, targetMethod.name, "(III)V", targetMethod.itf));
+    }
+
+    private void interceptNastyMethod(ListIterator<AbstractInsnNode> instructions, MethodInsnNode targetMethod) {
       boolean isStatic = targetMethod.getOpcode() == INVOKESTATIC;
 
       instructions.remove(); // remove the method invocation
@@ -722,40 +696,46 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
       instructions.add(new MethodInsnNode(INVOKESTATIC,
           Type.getType(RobolectricInternals.class).getInternalName(), "intercept",
           "(Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;"));
-      Type returnType = Type.getReturnType(targetMethod.desc);
-      // todo: make this honor the return value if somebody cares about what intercept returns
+
+      final Type returnType = Type.getReturnType(targetMethod.desc);
       switch (returnType.getSort()) {
+        case ARRAY:
         case OBJECT:
           instructions.add(new TypeInsnNode(CHECKCAST, remapType(returnType.getInternalName())));
-          break;
-        case ARRAY:
-          // wrong
-          instructions.add(new InsnNode(POP));
-          instructions.add(new InsnNode(ACONST_NULL));
           break;
         case VOID:
           instructions.add(new InsnNode(POP));
           break;
         case Type.LONG:
-          // wrong: should do Long#toLong()
-          instructions.add(new InsnNode(POP));
-          instructions.add(new InsnNode(LCONST_0));
+          instructions.add(new TypeInsnNode(CHECKCAST, Type.getInternalName(Long.class)));
+          instructions.add(new MethodInsnNode(INVOKEVIRTUAL, Type.getInternalName(Long.class), "longValue", Type.getMethodDescriptor(Type.LONG_TYPE), false));
           break;
         case Type.FLOAT:
-          // wrong
-          instructions.add(new InsnNode(POP));
-          instructions.add(new InsnNode(FCONST_0));
+          instructions.add(new TypeInsnNode(CHECKCAST, Type.getInternalName(Float.class)));
+          instructions.add(new MethodInsnNode(INVOKEVIRTUAL, Type.getInternalName(Float.class), "floatValue", Type.getMethodDescriptor(Type.FLOAT_TYPE), false));
           break;
         case Type.DOUBLE:
-          // wrong
-          instructions.add(new InsnNode(POP));
-          instructions.add(new InsnNode(DCONST_0));
+          instructions.add(new TypeInsnNode(CHECKCAST, Type.getInternalName(Double.class)));
+          instructions.add(new MethodInsnNode(INVOKEVIRTUAL, Type.getInternalName(Double.class), "doubleValue", Type.getMethodDescriptor(Type.DOUBLE_TYPE), false));
+          break;
+        case Type.BOOLEAN:
+          instructions.add(new TypeInsnNode(CHECKCAST, Type.getInternalName(Boolean.class)));
+          instructions.add(new MethodInsnNode(INVOKEVIRTUAL, Type.getInternalName(Boolean.class), "booleanValue", Type.getMethodDescriptor(Type.BOOLEAN_TYPE), false));
+          break;
+        case Type.INT:
+          instructions.add(new TypeInsnNode(CHECKCAST, Type.getInternalName(Integer.class)));
+          instructions.add(new MethodInsnNode(INVOKEVIRTUAL, Type.getInternalName(Integer.class), "intValue", Type.getMethodDescriptor(Type.INT_TYPE), false));
+          break;
+        case Type.SHORT:
+          instructions.add(new TypeInsnNode(CHECKCAST, Type.getInternalName(Short.class)));
+          instructions.add(new MethodInsnNode(INVOKEVIRTUAL, Type.getInternalName(Short.class), "shortValue", Type.getMethodDescriptor(Type.SHORT_TYPE), false));
+          break;
+        case Type.BYTE:
+          instructions.add(new TypeInsnNode(CHECKCAST, Type.getInternalName(Byte.class)));
+          instructions.add(new MethodInsnNode(INVOKEVIRTUAL, Type.getInternalName(Byte.class), "byteValue", Type.getMethodDescriptor(Type.BYTE_TYPE), false));
           break;
         default:
-          // wrong
-          instructions.add(new InsnNode(POP));
-          instructions.add(new InsnNode(ICONST_0));
-          break;
+          throw new RuntimeException("Not implemented: " + getClass().getName() + " cannot intercept methods with return type " + returnType.getClassName());
       }
     }
 
@@ -787,20 +767,20 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
       Label directCall = new Label();
       Label doReturn = new Label();
 
-      boolean isNormalInstanceMethod = !m.isStatic && !originalMethodName.equals(InstrumentingClassLoader.CONSTRUCTOR_METHOD_NAME);
+      boolean isNormalInstanceMethod = !m.isStatic && !originalMethodName.equals(ShadowConstants.CONSTRUCTOR_METHOD_NAME);
 
       // maybe perform proxy call...
       if (isNormalInstanceMethod) {
         Label notInstanceOfThis = new Label();
 
         m.loadThis();                                         // this
-        m.getField(classType, CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);  // contents of __robo_data__
+        m.getField(classType, ShadowConstants.CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);  // contents of __robo_data__
         m.instanceOf(classType);                              // __robo_data__, is instance of same class?
         m.visitJumpInsn(IFEQ, notInstanceOfThis);             // jump if no (is not instance)
 
         TryCatch tryCatchForProxyCall = m.tryStart(THROWABLE_TYPE);
         m.loadThis();                                         // this
-        m.getField(classType, CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);  // contents of __robo_data__
+        m.getField(classType, ShadowConstants.CLASS_HANDLER_DATA_FIELD_NAME, OBJECT_TYPE);  // contents of __robo_data__
         m.checkCast(classType);                               // __robo_data__ but cast to my class
         m.loadArgs();                                         // __robo_data__ instance, [args]
 
@@ -838,7 +818,7 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
         m.loadNull();
       } else {
         m.loadThis();
-        m.invokeVirtual(classType, new Method(GET_ROBO_DATA_METHOD_NAME, GET_ROBO_DATA_SIGNATURE));
+        m.invokeVirtual(classType, new Method(ShadowConstants.GET_ROBO_DATA_METHOD_NAME, GET_ROBO_DATA_SIGNATURE));
       }
       m.loadArgArray();          // params
       m.invokeInterface(PLAN_TYPE, PLAN_RUN_METHOD);
@@ -958,7 +938,7 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
 
   public static class AsmClassInfo implements ClassInfo {
     private final String className;
-    private ClassNode classNode;
+    private final ClassNode classNode;
 
     public AsmClassInfo(String className, ClassNode classNode) {
       this.className = className;
@@ -989,6 +969,122 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
     @Override
     public String getName() {
       return className;
+    }
+  }
+
+  /**
+   * ClassWriter implementation that verifies classes by comparing type information obtained
+   * from loading the classes as resources. This was taken from the ASM ClassWriter unit tests.
+   */
+  private class InstrumentingClassWriter extends ClassWriter {
+
+    /**
+     * Preserve stack map frames for V51 and newer bytecode. This fixes class verification errors
+     * for JDK7 and JDK8. The option to disable bytecode verification was removed in JDK8.
+     *
+     * Don't bother for V50 and earlier bytecode, because it doesn't contain stack map frames, and
+     * also because ASM's stack map frame handling doesn't support the JSR and RET instructions
+     * present in legacy bytecode.
+     */
+    public InstrumentingClassWriter(ClassNode classNode) {
+      super(classNode.version >= 51 ? ClassWriter.COMPUTE_FRAMES : ClassWriter.COMPUTE_MAXS);
+    }
+
+    @Override
+    public int newNameType(String name, String desc) {
+      return super.newNameType(name, desc.charAt(0) == ')' ? remapParams(desc) : remapParamType(desc));
+    }
+
+    @Override
+    public int newClass(String value) {
+      value = remapType(value);
+      return super.newClass(value);
+    }
+
+    @Override
+    protected String getCommonSuperClass(final String type1, final String type2) {
+      try {
+        ClassReader info1 = typeInfo(type1);
+        ClassReader info2 = typeInfo(type2);
+        if ((info1.getAccess() & Opcodes.ACC_INTERFACE) != 0) {
+          if (typeImplements(type2, info2, type1)) {
+            return type1;
+          }
+          if ((info2.getAccess() & Opcodes.ACC_INTERFACE) != 0) {
+            if (typeImplements(type1, info1, type2)) {
+              return type2;
+            }
+          }
+          return "java/lang/Object";
+        }
+        if ((info2.getAccess() & Opcodes.ACC_INTERFACE) != 0) {
+          if (typeImplements(type1, info1, type2)) {
+            return type2;
+          } else {
+            return "java/lang/Object";
+          }
+        }
+        StringBuilder b1 = typeAncestors(type1, info1);
+        StringBuilder b2 = typeAncestors(type2, info2);
+        String result = "java/lang/Object";
+        int end1 = b1.length();
+        int end2 = b2.length();
+        while (true) {
+          int start1 = b1.lastIndexOf(";", end1 - 1);
+          int start2 = b2.lastIndexOf(";", end2 - 1);
+          if (start1 != -1 && start2 != -1
+              && end1 - start1 == end2 - start2) {
+            String p1 = b1.substring(start1 + 1, end1);
+            String p2 = b2.substring(start2 + 1, end2);
+            if (p1.equals(p2)) {
+              result = p1;
+              end1 = start1;
+              end2 = start2;
+            } else {
+              return result;
+            }
+          } else {
+            return result;
+          }
+        }
+      } catch (IOException e) {
+        throw new RuntimeException(e.toString());
+      }
+    }
+
+    private StringBuilder typeAncestors(String type, ClassReader info) throws IOException {
+      StringBuilder b = new StringBuilder();
+      while (!"java/lang/Object".equals(type)) {
+        b.append(';').append(type);
+        type = info.getSuperName();
+        info = typeInfo(type);
+      }
+      return b;
+    }
+
+    private boolean typeImplements(String type, ClassReader info, String itf) throws IOException {
+      while (!"java/lang/Object".equals(type)) {
+        String[] itfs = info.getInterfaces();
+        for (String itf2 : itfs) {
+          if (itf2.equals(itf)) {
+            return true;
+          }
+        }
+        for (String itf1 : itfs) {
+          if (typeImplements(itf1, typeInfo(itf1), itf)) {
+            return true;
+          }
+        }
+        type = info.getSuperName();
+        info = typeInfo(type);
+      }
+      return false;
+    }
+
+    private ClassReader typeInfo(final String type) throws IOException {
+      try (InputStream is = getResourceAsStream(type + ".class")) {
+        return new ClassReader(is);
+      }
     }
   }
 }

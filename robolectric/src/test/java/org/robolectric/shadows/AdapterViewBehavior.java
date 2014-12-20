@@ -2,19 +2,17 @@ package org.robolectric.shadows;
 
 import android.os.Looper;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.TextView;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.robolectric.Robolectric;
+import org.robolectric.Shadows;
 import org.robolectric.TestRunners;
 import org.robolectric.util.Transcript;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.robolectric.Robolectric.shadowOf;
+import static org.robolectric.Shadows.shadowOf;
 
 @RunWith(TestRunners.WithDefaults.class)
 abstract public class AdapterViewBehavior {
@@ -22,7 +20,7 @@ abstract public class AdapterViewBehavior {
 
   @Before
   public void setUp() throws Exception {
-    Robolectric.shadowOf(Looper.getMainLooper()).pause();
+    Shadows.shadowOf(Looper.getMainLooper()).pause();
     adapterView = createAdapterView();
   }
 
@@ -50,7 +48,7 @@ abstract public class AdapterViewBehavior {
   }
 
   @Test public void testSetAdapter_ShouldCauseViewsToBeRenderedAsynchronously() throws Exception {
-    adapterView.setAdapter(new CountingAdapter(2));
+    adapterView.setAdapter(new ShadowCountingAdapter(2));
 
     assertThat(adapterView.getCount()).isEqualTo(2);
     assertThat(adapterView.getChildCount()).isEqualTo(0);
@@ -59,53 +57,6 @@ abstract public class AdapterViewBehavior {
     assertThat(adapterView.getChildCount()).isEqualTo(2);
     assertThat(((TextView) adapterView.getChildAt(0)).getText()).isEqualTo("Item 0");
     assertThat(((TextView) adapterView.getChildAt(1)).getText()).isEqualTo("Item 1");
-  }
-
-  @Ignore("maybe not a valid test in the 2.0 world?") // todo 2.0-cleanup
-  @Test public void testSetAdapter_ShouldSelectFirstItemAsynchronously() throws Exception {
-    final Transcript transcript = new Transcript();
-
-    adapterView.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-      @Override
-      public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-        assertThat(parent).isSameAs(adapterView);
-        assertThat(view).isNotNull();
-        assertThat(view).isSameAs(adapterView.getChildAt(position));
-        assertThat(id).isEqualTo(adapterView.getAdapter().getItemId(position));
-        transcript.add("selected item " + position);
-      }
-
-      @Override
-      public void onNothingSelected(AdapterView<?> parent) {
-      }
-    });
-    adapterView.setAdapter(new CountingAdapter(2));
-    transcript.assertNoEventsSoFar();
-    ShadowHandler.idleMainLooper();
-    transcript.assertEventsSoFar("selected item 0");
-  }
-
-  @Ignore("maybe not a valid test in the 2.0 world?") // todo
-  @Test public void testSetAdapter_ShouldFireOnNothingSelectedWhenAdapterCountIsReducedToZero() throws Exception {
-    final Transcript transcript = new Transcript();
-
-    adapterView.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-      @Override
-      public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-      }
-
-      @Override
-      public void onNothingSelected(AdapterView<?> parent) {
-        transcript.add("onNothingSelected fired");
-      }
-    });
-    CountingAdapter adapter = new CountingAdapter(2);
-    adapterView.setAdapter(adapter);
-    ShadowHandler.idleMainLooper();
-    transcript.assertNoEventsSoFar();
-    adapter.setCount(0);
-    ShadowHandler.idleMainLooper();
-    transcript.assertEventsSoFar("onNothingSelected fired");
   }
 
   @Test public void testSetEmptyView_ShouldHideAdapterViewIfAdapterIsNull() throws Exception {
@@ -119,7 +70,7 @@ abstract public class AdapterViewBehavior {
   }
 
   @Test public void testSetEmptyView_ShouldHideAdapterViewIfAdapterViewIsEmpty() throws Exception {
-    adapterView.setAdapter(new CountingAdapter(0));
+    adapterView.setAdapter(new ShadowCountingAdapter(0));
 
     View emptyView = new View(adapterView.getContext());
     adapterView.setEmptyView(emptyView);
@@ -129,7 +80,7 @@ abstract public class AdapterViewBehavior {
   }
 
   @Test public void testSetEmptyView_ShouldHideEmptyViewIfAdapterViewIsNotEmpty() throws Exception {
-    adapterView.setAdapter(new CountingAdapter(1));
+    adapterView.setAdapter(new ShadowCountingAdapter(1));
 
     View emptyView = new View(adapterView.getContext());
     adapterView.setEmptyView(emptyView);
@@ -139,7 +90,7 @@ abstract public class AdapterViewBehavior {
   }
 
   @Test public void testSetEmptyView_ShouldHideEmptyViewWhenAdapterGetsNewItem() throws Exception {
-    CountingAdapter adapter = new CountingAdapter(0);
+    ShadowCountingAdapter adapter = new ShadowCountingAdapter(0);
     adapterView.setAdapter(adapter);
 
     View emptyView = new View(adapterView.getContext());
@@ -157,7 +108,7 @@ abstract public class AdapterViewBehavior {
   }
 
   @Test public void testSetEmptyView_ShouldHideAdapterViewWhenAdapterBecomesEmpty() throws Exception {
-    CountingAdapter adapter = new CountingAdapter(1);
+    ShadowCountingAdapter adapter = new ShadowCountingAdapter(1);
     adapterView.setAdapter(adapter);
 
     View emptyView = new View(adapterView.getContext());
@@ -172,27 +123,5 @@ abstract public class AdapterViewBehavior {
 
     assertThat(adapterView.getVisibility()).isEqualTo(View.GONE);
     assertThat(emptyView.getVisibility()).isEqualTo(View.VISIBLE);
-  }
-
-  @Ignore("maybe not a valid test in the 2.0 world?") // todo 2.0-cleanup
-  @Test public void shouldOnlyUpdateOnceIfInvalidatedMultipleTimes() {
-    final Transcript transcript = new Transcript();
-    CountingAdapter adapter = new CountingAdapter(2) {
-      @Override
-      public View getView(int position, View convertView, ViewGroup parent) {
-        transcript.add("getView for " + position);
-        return super.getView(position, convertView, parent);
-      }
-    };
-    adapterView.setAdapter(adapter);
-
-    transcript.assertNoEventsSoFar();
-
-    adapter.notifyDataSetChanged();
-    adapter.notifyDataSetChanged();
-
-    ShadowHandler.idleMainLooper();
-
-    transcript.assertEventsSoFar("getView for 0", "getView for 1");
   }
 }

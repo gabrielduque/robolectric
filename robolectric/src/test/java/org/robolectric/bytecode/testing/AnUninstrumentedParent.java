@@ -1,6 +1,6 @@
 package org.robolectric.bytecode.testing;
 
-import org.robolectric.internal.DoNotInstrument;
+import org.robolectric.annotation.internal.DoNotInstrument;
 
 @DoNotInstrument
 public class AnUninstrumentedParent {

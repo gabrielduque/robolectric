@@ -4,18 +4,15 @@ import android.app.Application;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Looper;
-import org.robolectric.Robolectric;
-import org.robolectric.internal.ReflectionHelpers;
-import org.robolectric.shadows.ShadowLooper;
+import org.robolectric.RuntimeEnvironment;
+import org.robolectric.ShadowsAdapter;
+import org.robolectric.ShadowsAdapter.ShadowLooperAdapter;
+import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
-import static org.robolectric.Robolectric.shadowOf_;
-
-abstract class ComponentController<C extends ComponentController<C, T, S>, T, S> {
+abstract class ComponentController<C extends ComponentController<C, T>, T> {
   protected final C myself;
   protected final T component;
-  protected final S shadow;
-  protected final ShadowLooper shadowMainLooper;
+  protected final ShadowLooperAdapter shadowMainLooper;
 
   protected Application application;
   protected Context baseContext;
@@ -23,16 +20,15 @@ abstract class ComponentController<C extends ComponentController<C, T, S>, T, S>
 
   protected boolean attached;
 
-  public ComponentController(Class<T> componentClass) throws IllegalAccessException, InstantiationException {
-    this(componentClass.newInstance());
+  public ComponentController(ShadowsAdapter shadowsAdapter, Class<T> componentClass) throws IllegalAccessException, InstantiationException {
+    this(shadowsAdapter, componentClass.newInstance());
   }
 
   @SuppressWarnings("unchecked")
-  public ComponentController(T component) {
+  public ComponentController(ShadowsAdapter shadowsAdapter, T component) {
     myself = (C) this;
     this.component = component;
-    shadow = shadowOf_(component);
-    shadowMainLooper = shadowOf_(Looper.getMainLooper());
+    shadowMainLooper = shadowsAdapter.getMainLooper();
   }
 
   public T get() {
@@ -61,7 +57,7 @@ abstract class ComponentController<C extends ComponentController<C, T, S>, T, S>
   public abstract C destroy();
 
   public Intent getIntent() {
-    Application application = this.application == null ? Robolectric.application : this.application;
+    Application application = this.application == null ? RuntimeEnvironment.application : this.application;
     Intent intent = this.intent == null ? new Intent(application, component.getClass()) : this.intent;
     if (intent.getComponent() == null) {
       intent.setClass(application, component.getClass());
@@ -73,7 +69,7 @@ abstract class ComponentController<C extends ComponentController<C, T, S>, T, S>
     shadowMainLooper.runPaused(new Runnable() {
       @Override
       public void run() {
-        ReflectionHelpers.callInstanceMethodReflectively(component, methodName);
+        ReflectionHelpers.callInstanceMethod(component, methodName);
       }
     });
     return myself;
@@ -83,7 +79,7 @@ abstract class ComponentController<C extends ComponentController<C, T, S>, T, S>
     shadowMainLooper.runPaused(new Runnable() {
       @Override
       public void run() {
-        ReflectionHelpers.callInstanceMethodReflectively(component, methodName, new ReflectionHelpers.ClassParameter(Bundle.class, arg));
+        ReflectionHelpers.callInstanceMethod(component, methodName, ClassParameter.from(Bundle.class, arg));
       }
     });
     return myself;
@@ -93,7 +89,7 @@ abstract class ComponentController<C extends ComponentController<C, T, S>, T, S>
     shadowMainLooper.runPaused(new Runnable() {
       @Override
       public void run() {
-        ReflectionHelpers.callInstanceMethodReflectively(component, methodName, new ReflectionHelpers.ClassParameter(Intent.class, arg));
+        ReflectionHelpers.callInstanceMethod(component, methodName, ClassParameter.from(Intent.class, arg));
       }
     });
     return myself;
@@ -103,7 +99,7 @@ abstract class ComponentController<C extends ComponentController<C, T, S>, T, S>
     shadowMainLooper.runPaused(new Runnable() {
       @Override
       public void run() {
-        ReflectionHelpers.callInstanceMethodReflectively(component, methodName, new ReflectionHelpers.ClassParameter(Intent.class, arg), new ReflectionHelpers.ClassParameter(int.class, param1), new ReflectionHelpers.ClassParameter(int.class, param2));
+        ReflectionHelpers.callInstanceMethod(component, methodName, ClassParameter.from(Intent.class, arg), ClassParameter.from(int.class, param1), ClassParameter.from(int.class, param2));
       }
     });
     return myself;

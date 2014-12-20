@@ -1,27 +1,24 @@
 package org.robolectric.bytecode;
 
 import android.R;
-import org.robolectric.AndroidManifest;
+import org.robolectric.manifest.AndroidManifest;
 import org.robolectric.DependencyJar;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.SdkConfig;
 import org.robolectric.SdkEnvironment;
 import org.robolectric.TestLifecycle;
 import org.robolectric.annotation.Config;
-import org.robolectric.annotation.DisableStrictI18n;
-import org.robolectric.annotation.EnableStrictI18n;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
 import org.robolectric.impl.ExtendedResponseCache;
 import org.robolectric.impl.FakeCharsets;
 import org.robolectric.impl.ResponseSource;
-import org.robolectric.internal.DoNotInstrument;
-import org.robolectric.internal.Instrument;
+import org.robolectric.annotation.internal.DoNotInstrument;
+import org.robolectric.annotation.internal.Instrument;
 import org.robolectric.internal.ParallelUniverseInterface;
 import org.robolectric.res.ResourceLoader;
 import org.robolectric.res.ResourcePath;
-import org.robolectric.util.I18nException;
 import org.robolectric.util.Transcript;
 
 import java.util.ArrayList;
@@ -43,7 +40,6 @@ public class Setup {
       AndroidManifest.class,
       R.class,
 
-      org.robolectric.bytecode.InstrumentingClassLoader.class,
       org.robolectric.bytecode.AsmInstrumentingClassLoader.class,
       SdkEnvironment.class,
       SdkConfig.class,
@@ -58,9 +54,6 @@ public class Setup {
       Instrument.class,
       DoNotInstrument.class,
       Config.class,
-      EnableStrictI18n.class,
-      DisableStrictI18n.class,
-      I18nException.class,
       Transcript.class,
       org.robolectric.bytecode.DirectObjectMarker.class,
       DependencyJar.class,
@@ -68,7 +61,7 @@ public class Setup {
   );
 
   private static List<String> stringify(Class... classes) {
-    ArrayList<String> strings = new ArrayList<String>();
+    ArrayList<String> strings = new ArrayList<>();
     for (Class aClass : classes) {
       strings.add(aClass.getName());
     }
@@ -97,10 +90,10 @@ public class Setup {
   }
 
   public boolean shouldAcquire(String name) {
-    // the org.robolectric.res package lives in the base classloader, but not its tests; yuck.
+    // the org.robolectric.res and org.robolectric.manifest packages live in the base classloader, but not its tests; yuck.
     int lastDot = name.lastIndexOf('.');
     String pkgName = name.substring(0, lastDot == -1 ? 0 : lastDot);
-    if (pkgName.equals("org.robolectric.res")) {
+    if (pkgName.equals("org.robolectric.res") || (pkgName.equals("org.robolectric.manifest"))) {
       return name.contains("Test");
     }
 
@@ -130,7 +123,7 @@ public class Setup {
   }
 
   public Set<MethodRef> methodsToIntercept() {
-    return Collections.unmodifiableSet(new HashSet<MethodRef>(asList(
+    return Collections.unmodifiableSet(new HashSet<>(asList(
         new MethodRef(LinkedHashMap.class, "eldest"),
         new MethodRef(System.class, "loadLibrary"),
         new MethodRef("android.os.StrictMode", "trackActivity"),
@@ -140,26 +133,25 @@ public class Setup {
         new MethodRef("com.android.internal.policy.PolicyManager", "*"),
         new MethodRef("android.view.FallbackEventHandler", "*"),
         new MethodRef("android.view.IWindowSession", "*"),
-        new MethodRef("java.lang.System", "nanoTime")
+        new MethodRef("java.lang.System", "nanoTime"),
+        new MethodRef("java.lang.System", "currentTimeMillis"),
+        new MethodRef("java.lang.System", "arraycopy"),
+        new MethodRef("java.lang.System", "logE"),
+        new MethodRef("java.util.Locale", "adjustLanguageCode")
     )));
   }
 
   /**
    * Map from a requested class to an alternate stand-in, or not.
    *
-   * @return
+   * @return Mapping of class name translations.
    */
   public Map<String, String> classNameTranslations() {
-    Map<String, String> map = new HashMap<String, String>();
-    map.put("java.lang.AutoCloseable", Object.class.getName());
+    Map<String, String> map = new HashMap<>();
     map.put("java.net.ExtendedResponseCache", ExtendedResponseCache.class.getName());
     map.put("java.net.ResponseSource", ResponseSource.class.getName());
     map.put("java.nio.charset.Charsets", FakeCharsets.class.getName());
     return map;
-  }
-
-  public static class FakeClass {
-    public static class FakeInnerClass {}
   }
 
   public boolean containsStubs(ClassInfo classInfo) {

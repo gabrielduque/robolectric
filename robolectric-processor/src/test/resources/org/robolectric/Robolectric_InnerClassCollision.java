@@ -10,11 +10,12 @@ import org.robolectric.annotation.processing.shadows.ShadowDummy;
 import org.robolectric.annotation.processing.shadows.ShadowOuterDummy;
 import org.robolectric.annotation.processing.shadows.ShadowUniqueDummy;
 import org.robolectric.annotation.processing.shadows.ShadowUniqueDummy.ShadowUniqueInnerDummy;
-import org.robolectric.bytecode.RobolectricInternals;
-import org.robolectric.bytecode.ShadowWrangler;
+import org.robolectric.internal.ShadowExtractor;
+import org.robolectric.util.ShadowProvider;
 
 @Generated("org.robolectric.annotation.processing.RoboProcessor")
-public class RobolectricBase {
+@SuppressWarnings({"unchecked","deprecation"})
+public class Shadows implements ShadowProvider {
 
   public static final Class<?>[] DEFAULT_SHADOW_CLASSES = {
     ShadowDummy.class,
@@ -26,39 +27,30 @@ public class RobolectricBase {
   };
   
   public static ShadowDummy shadowOf(Dummy actual) {
-    return (ShadowDummy) shadowOf_(actual);
+    return (ShadowDummy) ShadowExtractor.extract(actual);
   }
   
   public static ShadowOuterDummy shadowOf(OuterDummy actual) {
-    return (ShadowOuterDummy) shadowOf_(actual);
+    return (ShadowOuterDummy) ShadowExtractor.extract(actual);
   }
   
   public static ShadowOuterDummy.ShadowInnerDummy shadowOf(OuterDummy.InnerDummy actual) {
-    return (ShadowOuterDummy.ShadowInnerDummy) shadowOf_(actual);
+    return (ShadowOuterDummy.ShadowInnerDummy) ShadowExtractor.extract(actual);
   }
   
   public static ShadowUniqueDummy shadowOf(UniqueDummy actual) {
-    return (ShadowUniqueDummy) shadowOf_(actual);
+    return (ShadowUniqueDummy) ShadowExtractor.extract(actual);
   }
   
   public static ShadowUniqueDummy.ShadowInnerDummy shadowOf(UniqueDummy.InnerDummy actual) {
-    return (ShadowUniqueDummy.ShadowInnerDummy) shadowOf_(actual);
+    return (ShadowUniqueDummy.ShadowInnerDummy) ShadowExtractor.extract(actual);
   }
   
   public static ShadowUniqueInnerDummy shadowOf(UniqueInnerDummy actual) {
-    return (ShadowUniqueInnerDummy) shadowOf_(actual);
+    return (ShadowUniqueInnerDummy) ShadowExtractor.extract(actual);
   }
   
-  public static void reset() {
+  public void reset() {
     ShadowDummy.resetter_method();
-  }
-
-  public static ShadowWrangler getShadowWrangler() {
-    return ((ShadowWrangler) RobolectricInternals.getClassHandler());
-  }
-  
-  @SuppressWarnings({"unchecked"})
-  public static <P, R> P shadowOf_(R instance) {
-    return (P) getShadowWrangler().shadowOf(instance);
   }
 }

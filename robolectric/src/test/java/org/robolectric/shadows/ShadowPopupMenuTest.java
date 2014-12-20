@@ -8,10 +8,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.TestRunners;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.robolectric.Robolectric.shadowOf;
+import static org.robolectric.Shadows.shadowOf;
 
 @RunWith(TestRunners.WithDefaults.class)
 public class ShadowPopupMenuTest {
@@ -21,8 +22,8 @@ public class ShadowPopupMenuTest {
 
   @Before
   public void setUp() {
-    View anchorView = new View(Robolectric.application);
-    popupMenu = new PopupMenu(Robolectric.application, anchorView);
+    View anchorView = new View(RuntimeEnvironment.application);
+    popupMenu = new PopupMenu(RuntimeEnvironment.application, anchorView);
     shadowPopupMenu = shadowOf(popupMenu);
   }
 

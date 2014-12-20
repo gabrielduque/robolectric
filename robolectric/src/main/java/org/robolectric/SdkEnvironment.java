@@ -1,6 +1,5 @@
 package org.robolectric;
 
-import org.robolectric.bytecode.ClassHandler;
 import org.robolectric.bytecode.ShadowMap;
 import org.robolectric.bytecode.ShadowWrangler;
 import org.robolectric.res.Fs;
@@ -9,7 +8,6 @@ import org.robolectric.res.ResourceExtractor;
 import org.robolectric.res.ResourceLoader;
 import org.robolectric.res.ResourcePath;
 
-import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,7 +15,6 @@ public class SdkEnvironment {
   private final SdkConfig sdkConfig;
   private final ClassLoader robolectricClassLoader;
   public final Map<ShadowMap, ShadowWrangler> classHandlersByShadowMap = new HashMap<ShadowMap, ShadowWrangler>();
-  private ClassHandler currentClassHandler;
   private ResourceLoader systemResourceLoader;
 
   public SdkEnvironment(SdkConfig sdkConfig, ClassLoader robolectricClassLoader) {
@@ -25,17 +22,16 @@ public class SdkEnvironment {
     this.robolectricClassLoader = robolectricClassLoader;
   }
 
-  public PackageResourceLoader createSystemResourceLoader(DependencyResolver dependencyResolver, RobolectricTestRunner robolectricTestRunner) {
-    URL url = dependencyResolver.getLocalArtifactUrl(sdkConfig.getSystemResourceDependency());
-    Fs systemResFs = Fs.fromJar(url);
+  public PackageResourceLoader createSystemResourceLoader(DependencyResolver dependencyResolver) {
+    Fs systemResFs = Fs.fromJar(dependencyResolver.getLocalArtifactUrl(sdkConfig.getSystemResourceDependency()));
     ResourceExtractor resourceExtractor = new ResourceExtractor(getRobolectricClassLoader());
     ResourcePath resourcePath = new ResourcePath(resourceExtractor.getProcessedRFile(), resourceExtractor.getPackageName(), systemResFs.join("res"), systemResFs.join("assets"));
     return new PackageResourceLoader(resourcePath, resourceExtractor);
   }
 
-  public synchronized ResourceLoader getSystemResourceLoader(DependencyResolver dependencyResolver, RobolectricTestRunner robolectricTestRunner) {
+  public synchronized ResourceLoader getSystemResourceLoader(DependencyResolver dependencyResolver) {
     if (systemResourceLoader == null) {
-      systemResourceLoader = createSystemResourceLoader(dependencyResolver, robolectricTestRunner);
+      systemResourceLoader = createSystemResourceLoader(dependencyResolver);
     }
     return systemResourceLoader;
   }
@@ -50,21 +46,6 @@ public class SdkEnvironment {
 
   public ClassLoader getRobolectricClassLoader() {
     return robolectricClassLoader;
-  }
-
-  /**
-   * @deprecated use {@link org.robolectric.Robolectric.Reflection#setFinalStaticField(Class, String, Object)}
-   */
-  public static void setStaticValue(Class<?> clazz, String fieldName, Object value) {
-    Robolectric.Reflection.setFinalStaticField(clazz, fieldName, value);
-  }
-
-  public ClassHandler getCurrentClassHandler() {
-    return currentClassHandler;
-  }
-
-  public void setCurrentClassHandler(ClassHandler currentClassHandler) {
-    this.currentClassHandler = currentClassHandler;
   }
 
   public SdkConfig getSdkConfig() {
