@@ -2,6 +2,8 @@
 
 [![Circle CI](https://circleci.com/gh/Snapchat/robolectric.svg?style=svg)](https://circleci.com/gh/Snapchat/robolectric)
 
+These are not the droids you're looking for! This is just our fork to submit patches to the upstream repo at [robolectric/robolectric](https://github.com/robolectric/robolectric). You probably want that one.
+
 Robolectric is a testing framework that de-fangs the Android SDK so you can test-drive the development of your Android app.
 
 ## Usage
