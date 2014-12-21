@@ -4,6 +4,7 @@
 machine:
   environment:
     ANDROID_HOME: /usr/local/android-sdk-linux
+    MAVEN_OPTS: -Xmx512m -XX:MaxPermSize=128m
 
 # Before running tests, install the following dependencies.
 dependencies:
