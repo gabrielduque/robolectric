@@ -22,4 +22,4 @@ test:
   override:
     - ./scripts/install-robolectric.sh
   post:
-    - cp /home/ubuntu/robolectric/robolectric/target/robolectric-2.4-jar-with-dependencies.jar $CIRCLE_ARTIFACTS
+    - cp /home/ubuntu/robolectric/robolectric/target/robolectric-*-jar-with-dependencies.jar $CIRCLE_ARTIFACTS
